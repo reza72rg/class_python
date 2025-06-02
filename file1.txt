@@ -1,6 +1,44 @@
-num = int(input("Enter your number= "))
+#!/bin/bash
 
-for i in range(1 , 10):
-    print(i)
+USER="ansible"
+SSH_KEY="/home/ansible/.ssh/id_rsa.pub"
+IP_FILE="servers.txt"
 
-print(num)
+function check_port() {
+    local ip=$1
+    local port=$2
+    timeout 2 bash -c "</dev/tcp/$ip/$port" &>/dev/null
+    return $?
+}
+
+while IFS= read -r ip || [[ -n "$ip" ]]; do
+    echo "🔍 Checking $ip..."
+
+    if check_port "$ip" 22500; then
+        PORT=22500
+        echo "[$ip] ✅ Port 22500 is open."
+    elif check_port "$ip" 22; then
+        PORT=22
+        echo "[$ip] ⚠️ Port 22500 closed, trying port 22... Port 22 is open."
+    else
+        echo "[$ip] ❌ Error: Neither port 22500 nor port 22 is open."
+        echo "-----------------------------------"
+        continue
+    fi
+
+    echo "[$ip] Trying ssh-copy-id with port $PORT..."
+
+    # تلاش برای کپی کلید با ssh-copy-id (تعاملی، پسورد از کاربر پرسیده می‌شود اگر لازم باشد)
+    ssh-copy-id -i "$SSH_KEY" -p "$PORT" "$USER@$ip"
+
+    if [ $? -ne 0 ]; then
+        echo "[$ip] ❌ Error: ssh-copy-id failed — wrong password or access denied."
+        echo "-----------------------------------"
+        continue
+    fi
+
+    echo "[$ip] ✅ ssh-copy-id succeeded."
+    echo "-----------------------------------"
+
+done < "$IP_FILE"
+
